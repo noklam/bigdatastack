@@ -26,31 +26,35 @@ public class ProducerDemoCallback {
         // create the producer
 
         final KafkaProducer<String, String> producer = new KafkaProducer<String, String>(properties);
-        // create a producer record
-        ProducerRecord<String, String> record = new ProducerRecord<String,
-                String>("first-topic", "Hello world");
-        // send data - asynchronous
+        for (int i = 0; i < 10; i++) {
+            // create a producer record
+            ProducerRecord<String, String> record = new ProducerRecord<String,
+                    String>("first-topic",
+                    "Hello world " + Integer.toString(i));
+            // send data - asynchronous
 
-        producer.send(record, new Callback() {
-            public void onCompletion(RecordMetadata recordMetadata, Exception e) {
+            producer.send(record, new Callback() {
+                public void onCompletion(RecordMetadata recordMetadata, Exception e) {
                     // executes every time a record is successfully sent or
-                // an exception is thrown
-                if (e == null){
-                    // the record was successfully sent
-                    logger.info("Received new metadata. \n" +
-                            "Topic: " + recordMetadata.topic() +"\n" +
-                            "Partition: " + recordMetadata.partition() + "\n" +
-                            "Offset: " + recordMetadata.offset()  + "\n" +
-                            "Timestamp: " + recordMetadata.timestamp());
+                    // an exception is thrown
+                    if (e == null) {
+                        // the record was successfully sent
+                        logger.info("Received new metadata. \n" +
+                                "Topic: " + recordMetadata.topic() + "\n" +
+                                "Partition: " + recordMetadata.partition() + "\n" +
+                                "Offset: " + recordMetadata.offset() + "\n" +
+                                "Timestamp: " + recordMetadata.timestamp());
                     } else {
-                            logger.error("Error while producing", e);
+                        logger.error("Error while producing", e);
+                    }
                 }
-            }
-        });
+            });
+        }
         // flush data
         producer.flush();
         // flush and close
         producer.close();
+
     }
 }
 
