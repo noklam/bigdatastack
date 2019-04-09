@@ -53,7 +53,7 @@ public class ProducerDemoKeys {
                         logger.error("Error while producing", e);
                     }
                 }
-            }).get(); // block the .send() to make it synchronous - don' tdo
+            }); // block the .send() to make it synchronous - don' tdo
             // this in production
         }
         // flush data
