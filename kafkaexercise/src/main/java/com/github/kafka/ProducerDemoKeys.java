@@ -7,10 +7,11 @@ import org.slf4j.LoggerFactory;
 import sun.rmi.runtime.Log;
 
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 
 public class ProducerDemoKeys {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws ExecutionException, InterruptedException {
 
         final Logger logger = LoggerFactory.getLogger(ProducerDemoCallback.class);
 //        System.out.println("hello world!");
@@ -29,7 +30,7 @@ public class ProducerDemoKeys {
         for (int i = 0; i < 10; i++) {
             // create a producer record
 
-            String topic = "first_topic";
+            String topic = "first-topic";
             String value = "Hello! world! " + Integer.toString(i);
             String key = "id_" + Integer.toString(i);
 
@@ -52,7 +53,8 @@ public class ProducerDemoKeys {
                         logger.error("Error while producing", e);
                     }
                 }
-            }).get(); // block the .send() to make it synchronous - don' tdo this in production
+            }).get(); // block the .send() to make it synchronous - don' tdo
+            // this in production
         }
         // flush data
         producer.flush();
