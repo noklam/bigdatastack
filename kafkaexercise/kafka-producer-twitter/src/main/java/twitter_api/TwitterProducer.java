@@ -1,4 +1,4 @@
-package com.github.kafka.twitter_api;
+package twitter_api;
 
 import com.google.common.collect.Lists;
 import com.twitter.hbc.ClientBuilder;
