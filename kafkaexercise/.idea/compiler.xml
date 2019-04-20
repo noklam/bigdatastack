@@ -9,6 +9,7 @@
         <module name="kafkaexercise" />
         <module name="kafkabasics" />
         <module name="kafka-producer-twitter" />
+        <module name="kafka-elasticsearch-consumer" />
       </profile>
     </annotationProcessing>
   </component>
