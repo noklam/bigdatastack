@@ -1,5 +1,6 @@
 package bigdata.example;
 
+import com.google.gson.JsonParser;
 import org.apache.http.HttpHost;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
@@ -27,6 +28,8 @@ import java.util.Arrays;
 import java.util.Properties;
 
 public class ElasticSearchConsumer {
+    private static JsonParser jsonParser = new JsonParser();
+
     public static RestHighLevelClient createClient() {
         String hostname = "twitter-kafka-9841934087.ap-southeast-2.bonsaisearch.net";
         String username = "JpzEa2S3GD";
@@ -36,18 +39,21 @@ public class ElasticSearchConsumer {
         final CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
         credentialsProvider.setCredentials(AuthScope.ANY,
                 new UsernamePasswordCredentials(username, password));
-        RestClientBuilder builder = RestClient.builder(
-                new HttpHost(hostname, 443, "https")).setHttpClientConfigCallback(new RestClientBuilder.HttpClientConfigCallback() {
-            @Override
-            public HttpAsyncClientBuilder customizeHttpClient(HttpAsyncClientBuilder httpAsyncClientBuilder) {
-                return httpAsyncClientBuilder.setDefaultCredentialsProvider(credentialsProvider);
-            }
-        });
+        RestClientBuilder builder = RestClient
+                .builder(
+                        new HttpHost(hostname, 443, "https"))
+                .setHttpClientConfigCallback(new RestClientBuilder.HttpClientConfigCallback() {
+                    @Override
+                    public HttpAsyncClientBuilder customizeHttpClient(HttpAsyncClientBuilder httpAsyncClientBuilder) {
+                        return httpAsyncClientBuilder
+                                .setDefaultCredentialsProvider(credentialsProvider);
+                    }
+                });
         RestHighLevelClient client = new RestHighLevelClient(builder);
         return client;
     }
 
-    public static KafkaConsumer<String, String> createConsumer(String topic){
+    public static KafkaConsumer<String, String> createConsumer(String topic) {
 
         Properties properties = new Properties();
         String bootstrapServers = "127.0.0.1:9092";
@@ -60,8 +66,10 @@ public class ElasticSearchConsumer {
         properties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG
                 , StringDeserializer.class.getName());
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
-        properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
-                "earliest");
+        properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "10");
+        properties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false"); // disable
+        // auto commit
 
         // create consumer
         KafkaConsumer<String, String> consumer = new KafkaConsumer<String, String>(properties);
@@ -70,41 +78,63 @@ public class ElasticSearchConsumer {
         return consumer;
     }
 
-
     public static void main(String[] args) throws IOException {
         // Logger
         Logger logger = LoggerFactory.getLogger(ElasticSearchConsumer.class.getName());
         RestHighLevelClient client = createClient();
 
-
-
-
         KafkaConsumer<String, String> consumer = createConsumer("twitter_tweets");
-        while(true){
+        while (true) {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
 
-            for (ConsumerRecord<String, String> record:records) {
-                 // where we insert data into ElasticSearch
+            logger.info("Received " + records.count() + " records");
+            for (ConsumerRecord<String, String> record : records) {
+
+                // 2 strategies to avoid duplicate
+                // Kafka generic ID
+                // String id = record.topic() + "_" + record.partition() + "_" +  record.offset()
+                // Twitter feed id
+                String id = extractIdFromTweet(record.value());
+                // where we insert data into ElasticSearch
                 String jsonString = record.value();
+//                logger.info(jsonString);
 //                String jsonString = "{ \"foo\": \"bar\" }";
 
                 IndexRequest indexRequest = new IndexRequest(
-                        "twitter", "tweets"
+                        "twitter",
+                        "tweets",
+                        id // make sure idempotent
                 ).source(jsonString, XContentType.JSON);
 
                 IndexResponse indexResponse = client.index(indexRequest, RequestOptions.DEFAULT);
-                String id = indexResponse.getId();
+//                String id = indexResponse.getId();
                 logger.info(id);
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(10);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
+                    logger.info(jsonString); // Print out the message too
                 }
             }
+            logger.info("Commiting Offset manually");
+            consumer.commitSync();
+            logger.info("Offsets have been commited");
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         }
-
         // close the client
 //        client.close();
+    }
 
+    private static String extractIdFromTweet(String tweetJson) {
+        // GSON lib to parse JSON
+        return jsonParser
+                .parse(tweetJson)
+                .getAsJsonObject()
+                .get("id_str")
+                .getAsString();
     }
 }
