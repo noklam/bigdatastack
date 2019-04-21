@@ -12,6 +12,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.elasticsearch.action.bulk.BulkRequest;
+import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.client.RequestOptions;
@@ -67,7 +69,7 @@ public class ElasticSearchConsumer {
                 , StringDeserializer.class.getName());
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "10");
+        properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "100");
         properties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false"); // disable
         // auto commit
 
@@ -86,43 +88,47 @@ public class ElasticSearchConsumer {
         KafkaConsumer<String, String> consumer = createConsumer("twitter_tweets");
         while (true) {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+            Integer recordCount = records.count();
+            logger.info("Received " + recordCount + " records");
 
-            logger.info("Received " + records.count() + " records");
+            BulkRequest bulkRequest = new BulkRequest();
+
             for (ConsumerRecord<String, String> record : records) {
 
                 // 2 strategies to avoid duplicate
                 // Kafka generic ID
                 // String id = record.topic() + "_" + record.partition() + "_" +  record.offset()
                 // Twitter feed id
-                String id = extractIdFromTweet(record.value());
-                // where we insert data into ElasticSearch
-                String jsonString = record.value();
+                try {
+                    String id = extractIdFromTweet(record.value());
+                    // where we insert data into ElasticSearch
+                    String jsonString = record.value();
 //                logger.info(jsonString);
 //                String jsonString = "{ \"foo\": \"bar\" }";
 
-                IndexRequest indexRequest = new IndexRequest(
-                        "twitter",
-                        "tweets",
-                        id // make sure idempotent
-                ).source(jsonString, XContentType.JSON);
+                    IndexRequest indexRequest = new IndexRequest(
+                            "twitter",
+                            "tweets",
+                            id // make sure idempotent
+                    ).source(jsonString, XContentType.JSON);
+                    bulkRequest.add(indexRequest); // we add to our bulk request
+                } catch (NullPointerException e){
+                    logger.warn("Bad data! Skip it: " + record.value());
+                }
 
-                IndexResponse indexResponse = client.index(indexRequest, RequestOptions.DEFAULT);
-//                String id = indexResponse.getId();
-                logger.info(id);
+
+            }
+            if (recordCount > 0) {
+                BulkResponse bulkItemResponses = client.bulk(bulkRequest, RequestOptions.DEFAULT);
+                // IndexResponse indexResponse = client.index(indexRequest, RequestOptions.DEFAULT);
+                logger.info("Commiting Offset manually");
+                consumer.commitSync();
+                logger.info("Offsets have been commited");
                 try {
-                    Thread.sleep(10);
+                    Thread.sleep(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
-                    logger.info(jsonString); // Print out the message too
                 }
-            }
-            logger.info("Commiting Offset manually");
-            consumer.commitSync();
-            logger.info("Offsets have been commited");
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
             }
         }
         // close the client
